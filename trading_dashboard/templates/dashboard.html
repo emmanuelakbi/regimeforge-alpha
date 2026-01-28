@@ -1,0 +1,357 @@
+<!doctype html>
+<html>
+
+<head>
+  <title>RegimeForge Alpha - AI Trading</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}" />
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 RegimeForge Alpha</h1>
+      <div class="subtitle">
+        AI-Powered Trading Dashboard • WEEX Hackathon
+      </div>
+      <div class="coin-selector" style="margin-top: 12px">
+        <select id="coin-select" onchange="changeCoin(this.value)">
+          <option value="BTC">BTC/USDT</option>
+          <option value="ETH">ETH/USDT</option>
+          <option value="SOL">SOL/USDT</option>
+          <option value="XRP">XRP/USDT</option>
+          <option value="BNB">BNB/USDT</option>
+          <option value="ADA">ADA/USDT</option>
+          <option value="DOGE">DOGE/USDT</option>
+          <option value="LTC">LTC/USDT</option>
+        </select>
+      </div>
+    </div>
+    <div id="message"></div>
+    <div class="grid">
+      <!-- AI Analysis Panel -->
+      <div class="card ai-panel">
+        <h2>
+          <span class="icon">🧠</span> AI Analysis -
+          <span id="current-coin">BTC</span>/USDT
+        </h2>
+        <div id="ai-regime">
+          <span class="regime-badge regime-range">Loading...</span>
+        </div>
+        <div class="signal-display signal-neutral" id="ai-signal-display">
+          <div class="signal-text" id="ai-signal">--</div>
+          <div style="font-size: 12px; color: #888; margin-top: 5px">
+            Confidence: <span id="ai-confidence">--</span>%
+          </div>
+          <div class="confidence-bar">
+            <div class="confidence-fill" id="confidence-bar" style="width: 50%; background: #ffaa00"></div>
+          </div>
+        </div>
+        <div class="indicator-grid">
+          <div class="indicator">
+            <div class="indicator-label">RSI</div>
+            <div class="indicator-value" id="ind-rsi">--</div>
+          </div>
+          <div class="indicator">
+            <div class="indicator-label">Trend</div>
+            <div class="indicator-value" id="ind-trend">--</div>
+          </div>
+          <div class="indicator">
+            <div class="indicator-label">Volatility</div>
+            <div class="indicator-value" id="ind-vol">--</div>
+          </div>
+          <div class="indicator">
+            <div class="indicator-label">24h Change</div>
+            <div class="indicator-value" id="ind-change">--</div>
+          </div>
+        </div>
+        <div class="reasoning-list" id="ai-reasoning">
+          <div class="reasoning-item">Analyzing market...</div>
+        </div>
+        <button class="btn btn-ai" onclick="runAIAnalysis()">
+          🔄 Refresh AI Analysis
+        </button>
+        <div class="ai-trade-section">
+          <label style="
+                color: #888;
+                font-size: 12px;
+                margin-bottom: 5px;
+                display: block;
+              ">AI Trade Size (USDT)</label>
+          <input type="number" id="ai-trade-size" value="10" min="5" step="5" style="margin-bottom: 10px" />
+          <div style="color: #666; font-size: 11px; margin-bottom: 10px" id="ai-size-hint">
+            ≈ 0.0001 BTC
+          </div>
+          <button class="btn btn-buy" onclick="executeAITrade('long')" id="ai-long-btn">
+            🤖 AI Long
+          </button>
+          <button class="btn btn-sell" onclick="executeAITrade('short')" id="ai-short-btn" style="margin-top: 8px">
+            🤖 AI Short
+          </button>
+        </div>
+        <div class="ai-log-status ai-log-pending" id="ai-log-status">
+          AI logs auto-submitted with trades
+        </div>
+      </div>
+
+      <!-- Market Overview -->
+      <div class="card">
+        <h2>
+          <span class="icon">📊</span> <span id="market-coin">BTC</span>/USDT
+        </h2>
+        <div class="price-display">
+          $<span id="btc-price">--</span><span class="price-change" id="price-change"></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">24h High</span><span class="stat-value">$<span id="high-24h">--</span></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">24h Low</span><span class="stat-value">$<span id="low-24h">--</span></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Balance</span><span class="stat-value">$<span id="balance">--</span></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Updated</span><span class="stat-value" id="last-update">--</span>
+        </div>
+        <button class="btn btn-refresh" onclick="refreshData()">
+          🔄 Refresh All
+        </button>
+      </div>
+
+      <!-- Current Position -->
+      <div class="card">
+        <h2>
+          <span class="icon">📈</span>
+          <span id="position-coin">BTC</span> Position
+        </h2>
+        <div id="position-info">
+          <div class="no-position">No open position</div>
+        </div>
+        <button class="btn btn-close" onclick="closePosition()" id="close-btn" disabled>
+          Close Position
+        </button>
+        <div style="
+              margin-top: 15px;
+              padding-top: 15px;
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+            ">
+          <div style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+              ">
+            <span style="color: #ffaa00; font-size: 13px; font-weight: 600">🎯 Take-Profit</span>
+            <label style="
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  cursor: pointer;
+                  margin: 0;
+                ">
+              <input type="checkbox" id="tp-enabled" onchange="toggleTP()" style="width: auto; margin: 0" />
+              <span style="font-size: 12px; color: #888">Enable</span>
+            </label>
+          </div>
+          <div id="tp-controls" style="display: none">
+            <div class="toggle-group" style="margin-bottom: 8px">
+              <button class="toggle-btn active" id="tp-fixed-btn" onclick="setTPMode('fixed')">
+                Fixed %
+              </button>
+              <button class="toggle-btn" id="tp-trailing-btn" onclick="setTPMode('trailing')">
+                Trailing
+              </button>
+            </div>
+            <div id="tp-fixed-settings">
+              <label style="font-size: 11px; color: #888">Target Profit %</label>
+              <input type="number" id="tp-fixed-pct" value="1.5" min="0.1" step="0.1" style="margin-bottom: 5px" />
+            </div>
+            <div id="tp-trailing-settings" style="display: none">
+              <label style="font-size: 11px; color: #888">Close if drops % from peak</label>
+              <input type="number" id="tp-trailing-pct" value="0.5" min="0.1" step="0.1" style="margin-bottom: 5px" />
+            </div>
+            <div id="tp-status" style="
+                  padding: 8px;
+                  background: rgba(0, 0, 0, 0.2);
+                  border-radius: 6px;
+                  font-size: 11px;
+                  color: #888;
+                  text-align: center;
+                ">
+              Waiting for position...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Automation Panel -->
+      <div class="card automation-panel">
+        <h2>
+          <span class="icon">🤖</span> Full Automation
+          <span style="font-size: 11px; color: #ff0080; margin-left: 8px">BETA</span>
+        </h2>
+        <div class="automation-warning">
+          <span style="color: #ff4466; font-size: 12px">⚠️ Use at your own risk</span>
+          <label style="
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: pointer;
+                margin: 0;
+              ">
+            <input type="checkbox" id="auto-master" onchange="toggleAutomation()" style="width: auto; margin: 0" />
+            <span style="font-size: 13px; font-weight: 600" id="auto-master-label">OFF</span>
+          </label>
+        </div>
+        <div id="auto-controls" style="display: none">
+          <div style="margin-bottom: 12px">
+            <label style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  cursor: pointer;
+                  margin-bottom: 8px;
+                ">
+              <input type="checkbox" id="auto-entry" onchange="saveAutoSettings()" style="width: auto; margin: 0" />
+              <span style="font-size: 12px; color: #aaa">Auto-Entry (AI opens trades)</span>
+            </label>
+            <label style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  cursor: pointer;
+                  margin-bottom: 8px;
+                ">
+              <input type="checkbox" id="auto-tp" onchange="saveAutoSettings()" style="width: auto; margin: 0" />
+              <span style="font-size: 12px; color: #aaa">Auto Take-Profit (no confirmation)</span>
+            </label>
+            <label style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  cursor: pointer;
+                ">
+              <input type="checkbox" id="auto-sl" onchange="saveAutoSettings()" style="width: auto; margin: 0" />
+              <span style="font-size: 12px; color: #aaa">Auto Stop-Loss</span>
+            </label>
+          </div>
+          <div class="auto-controls-grid">
+            <div>
+              <label>Margin ($)</label><input type="number" id="auto-margin" value="30" min="5" step="5"
+                onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Leverage</label><input type="number" id="auto-leverage" value="20" min="1" max="100" step="1"
+                onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Min Confidence %</label><input type="number" id="auto-min-conf" value="65" min="50" max="95"
+                step="5" onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Stop-Loss %</label><input type="number" id="auto-sl-pct" value="2" min="0.5" max="10" step="0.5"
+                onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Cooldown (min)</label><input type="number" id="auto-cooldown" value="5" min="1" max="60" step="1"
+                onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Max Trades/Hour</label><input type="number" id="auto-max-trades" value="3" min="1" max="20"
+                step="1" onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Daily Loss Limit ($)</label><input type="number" id="auto-daily-limit" value="20" min="5" max="500"
+                step="5" onchange="saveAutoSettings()" />
+            </div>
+            <div>
+              <label>Position Value</label>
+              <div id="auto-position-value" class="position-value-display">
+                $600
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="auto-status" class="auto-status">Automation ready</div>
+      </div>
+
+      <!-- Manual Trade -->
+      <div class="card">
+        <h2><span class="icon">⚡</span> Manual Trade</h2>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="market-btn" onclick="setOrderType('market')">
+            Market
+          </button>
+          <button class="toggle-btn" id="limit-btn" onclick="setOrderType('limit')">
+            Limit
+          </button>
+        </div>
+        <label>Size</label>
+        <div class="size-input-group">
+          <input type="number" id="trade-size" value="100" step="1" min="1" />
+          <div class="size-unit-toggle">
+            <button class="size-unit-btn" id="coin-unit-btn" onclick="setSizeUnit('coin')">
+              COIN
+            </button>
+            <button class="size-unit-btn active" id="usdt-btn" onclick="setSizeUnit('usdt')">
+              USDT
+            </button>
+          </div>
+        </div>
+        <div style="color: #666; font-size: 11px; margin-bottom: 10px" id="size-hint"></div>
+        <div class="limit-section" id="limit-section">
+          <label>Limit Price ($)</label>
+          <input type="number" id="limit-price" placeholder="Enter price" step="0.1" />
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-buy" onclick="openTrade('long')">
+            Long
+          </button>
+          <button class="btn btn-sell" onclick="openTrade('short')">
+            Short
+          </button>
+        </div>
+        <div style="
+              font-size: 11px;
+              color: #666;
+              margin-top: 10px;
+              text-align: center;
+            ">
+          Manual trades also submit AI logs
+        </div>
+      </div>
+
+      <!-- Open Orders -->
+      <div class="card">
+        <h2><span class="icon">📋</span> Open Orders</h2>
+        <div id="open-orders">
+          <div class="no-position">No open orders</div>
+        </div>
+      </div>
+
+      <!-- Trade History -->
+      <div class="card">
+        <h2><span class="icon">📜</span> Recent Trades</h2>
+        <div class="trade-history" id="trade-history">
+          <div class="no-position">Loading...</div>
+        </div>
+      </div>
+
+      <!-- All Open Positions -->
+      <div class="card">
+        <h2><span class="icon">💼</span> All Open Positions</h2>
+        <div id="all-positions">
+          <div class="no-position">Loading...</div>
+        </div>
+        <button class="btn btn-refresh" onclick="loadAllPositions()" style="margin-top: 10px">
+          🔄 Refresh All
+        </button>
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+
+</html>

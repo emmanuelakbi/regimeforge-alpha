@@ -1,0 +1,16 @@
+[Unit]
+Description=RegimeForge Trading Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/trading_dashboard
+Environment=PATH=/home/ubuntu/trading_venv/bin
+EnvironmentFile=/home/ubuntu/trading_dashboard/.env
+ExecStart=/home/ubuntu/trading_venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 "trading_dashboard.app:create_app()"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
