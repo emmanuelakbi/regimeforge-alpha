@@ -4,7 +4,8 @@ var orderType = "market",
   coinPrice = 0,
   aiSignal = null,
   aiData = null,
-  currentCoin = "BTC";
+  currentCoin = "BTC",
+  chatHistory = [];
 var coinStepSizes = {
   BTC: 3,
   ETH: 3,
@@ -338,6 +339,7 @@ function refreshData() {
   });
   loadAllPositions();
   loadGlobalMarket();
+  updateChatContextFromGlobals();
   document.getElementById("last-update").textContent =
     new Date().toLocaleTimeString();
 }
@@ -398,6 +400,140 @@ function loadGlobalMarket() {
       coinTrendingBadge.style.display = "none";
     }
   });
+
+  // Load Claude market brief
+  loadMarketBrief();
+}
+
+function loadMarketBrief() {
+  get("/api/brief", function (d) {
+    var briefEl = document.getElementById("brief-text");
+    var badgeEl = document.getElementById("claude-badge");
+
+    if (d.success && d.brief) {
+      briefEl.textContent = d.brief;
+      if (d.claude_enabled) {
+        badgeEl.style.display = "inline";
+      } else {
+        badgeEl.style.display = "none";
+      }
+    } else {
+      briefEl.textContent = "Unable to load market brief.";
+    }
+  });
+}
+
+function explainSignal() {
+  var explainEl = document.getElementById("signal-explanation");
+  var btn = event.target;
+
+  if (!aiData) {
+    explainEl.style.display = "block";
+    explainEl.textContent = "Run AI analysis first to get signal explanation.";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "⏳ Asking Claude...";
+  explainEl.style.display = "block";
+  explainEl.textContent = "Generating explanation...";
+
+  post("/api/explain", { signal_data: aiData }, function (d) {
+    btn.disabled = false;
+    btn.textContent = "✨ Why this signal?";
+
+    if (d.success && d.explanation) {
+      explainEl.innerHTML =
+        "<strong style='color:#a855f7'>🤖 Claude:</strong> " + d.explanation;
+      if (d.claude_enabled) {
+        explainEl.innerHTML +=
+          "<span style='color:#a855f7;font-size:10px;margin-left:8px'>✨ AI</span>";
+      }
+    } else {
+      explainEl.textContent = d.error || "Unable to generate explanation.";
+    }
+  });
+}
+
+function checkTradeRisk() {
+  var sizeEl = document.getElementById("ai-trade-size");
+  var riskEl = document.getElementById("risk-assessment");
+  var levelEl = document.getElementById("risk-level");
+  var detailsEl = document.getElementById("risk-details");
+
+  var size = parseFloat(sizeEl.value) || 0;
+  if (size < 5) {
+    riskEl.style.display = "none";
+    return;
+  }
+
+  riskEl.style.display = "block";
+  levelEl.textContent = "Checking...";
+  detailsEl.textContent = "";
+  riskEl.style.background = "rgba(100,100,100,0.2)";
+
+  post(
+    "/api/risk",
+    {
+      size_usdt: size,
+      signal_data: aiData,
+      coin: currentCoin,
+    },
+    function (d) {
+      if (d.success) {
+        var level = d.level || "UNKNOWN";
+        var colors = {
+          LOW: { bg: "rgba(0,255,136,0.15)", text: "#00ff88", icon: "✅" },
+          MEDIUM: { bg: "rgba(255,170,0,0.15)", text: "#ffaa00", icon: "⚠️" },
+          HIGH: { bg: "rgba(255,68,102,0.15)", text: "#ff4466", icon: "🔴" },
+          VERY_HIGH: { bg: "rgba(255,0,0,0.2)", text: "#ff0000", icon: "⛔" },
+        };
+        var style = colors[level] || {
+          bg: "rgba(100,100,100,0.2)",
+          text: "#888",
+          icon: "❓",
+        };
+
+        riskEl.style.background = style.bg;
+        riskEl.style.border = "1px solid " + style.text;
+        levelEl.textContent = style.icon + " " + level;
+        levelEl.style.color = style.text;
+
+        // Build detailed info
+        var details = "";
+        if (d.margin_usdt !== undefined) {
+          details +=
+            "<div style='margin-bottom:4px'><strong>Margin:</strong> $" +
+            d.margin_usdt.toFixed(2) +
+            " | <strong>Position:</strong> $" +
+            size +
+            " @ 20x</div>";
+        }
+        if (d.balance !== undefined && d.risk_pct !== undefined) {
+          details +=
+            "<div style='margin-bottom:4px'><strong>Balance:</strong> $" +
+            d.balance.toFixed(2) +
+            " | <strong>Risk:</strong> " +
+            d.risk_pct.toFixed(2) +
+            "% of balance</div>";
+        }
+        if (d.assessment) {
+          details +=
+            "<div style='color:#ccc;font-style:italic;margin-top:6px'>" +
+            d.assessment +
+            "</div>";
+        }
+        if (d.claude_enabled) {
+          details +=
+            "<span style='color:#a855f7;font-size:10px;margin-left:4px'>✨ AI</span>";
+        }
+        detailsEl.innerHTML = details;
+      } else {
+        levelEl.textContent = "❌ Error";
+        detailsEl.textContent = d.error || "Unable to assess risk.";
+      }
+    },
+  );
 }
 
 var currentPosition = null;
@@ -922,3 +1058,177 @@ setInterval(refreshData, 30000);
 setInterval(checkTakeProfit, 10000);
 setInterval(runAutomation, 15000);
 initPage();
+
+// ============================================
+// AI Chat Advisor Functions
+// ============================================
+
+function sendChat() {
+  var input = document.getElementById("chat-input");
+  var message = input.value.trim();
+
+  if (!message) return;
+
+  // Clear input
+  input.value = "";
+
+  // Add user message to chat
+  addChatMessage("user", message);
+
+  // Show typing indicator
+  showTypingIndicator();
+
+  // Build history for API (convert text -> content)
+  var apiHistory = chatHistory.slice(-6).map(function (m) {
+    return { role: m.role, content: m.text };
+  });
+
+  // Send to API with history
+  post("/api/chat", { message: message, history: apiHistory }, function (d) {
+    hideTypingIndicator();
+
+    if (d.success && d.response) {
+      addChatMessage("assistant", d.response);
+
+      // Update context display
+      if (d.context) {
+        updateChatContext(d.context);
+      }
+    } else {
+      addChatMessage(
+        "assistant",
+        "Sorry, I couldn't process that. " + (d.error || "Please try again."),
+      );
+    }
+  });
+}
+
+function quickChat(action) {
+  // Show typing indicator
+  showTypingIndicator();
+
+  // Add a placeholder message
+  var actionLabels = {
+    analyze_position: "Analyzing your position...",
+    market_overview: "Getting market overview...",
+    risk_check: "Checking your risk exposure...",
+    trade_idea: "Looking for trade opportunities...",
+    trending: "Checking trending coins...",
+  };
+
+  addChatMessage("user", actionLabels[action] || "Processing...");
+
+  post("/api/chat/quick", { action: action }, function (d) {
+    hideTypingIndicator();
+
+    if (d.success && d.response) {
+      addChatMessage("assistant", d.response);
+    } else {
+      addChatMessage(
+        "assistant",
+        "Sorry, I couldn't process that request. " + (d.error || ""),
+      );
+    }
+  });
+}
+
+function addChatMessage(role, text) {
+  var messagesEl = document.getElementById("chat-messages");
+  var avatar = role === "user" ? "👤" : "🤖";
+
+  var messageDiv = document.createElement("div");
+  messageDiv.className = "chat-message " + role;
+  messageDiv.innerHTML =
+    '<div class="chat-avatar">' +
+    avatar +
+    "</div>" +
+    '<div class="chat-content">' +
+    '<div class="chat-text">' +
+    escapeHtml(text) +
+    "</div>" +
+    "</div>";
+
+  messagesEl.appendChild(messageDiv);
+
+  // Scroll to bottom
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  // Store in history
+  chatHistory.push({ role: role, text: text });
+
+  // Keep only last 20 messages in UI
+  while (messagesEl.children.length > 20) {
+    messagesEl.removeChild(messagesEl.firstChild);
+  }
+}
+
+function showTypingIndicator() {
+  var messagesEl = document.getElementById("chat-messages");
+
+  // Remove existing indicator if any
+  hideTypingIndicator();
+
+  var indicator = document.createElement("div");
+  indicator.className = "chat-message assistant";
+  indicator.id = "typing-indicator";
+  indicator.innerHTML =
+    '<div class="chat-avatar">🤖</div>' +
+    '<div class="chat-content">' +
+    '<div class="typing-indicator">' +
+    "<span></span><span></span><span></span>" +
+    "</div>" +
+    "</div>";
+
+  messagesEl.appendChild(indicator);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function hideTypingIndicator() {
+  var indicator = document.getElementById("typing-indicator");
+  if (indicator) {
+    indicator.remove();
+  }
+}
+
+function updateChatContext(context) {
+  var coinEl = document.getElementById("chat-context-coin");
+  var priceEl = document.getElementById("chat-context-price");
+  var signalEl = document.getElementById("chat-context-signal");
+
+  if (coinEl && context.coin) {
+    coinEl.textContent = context.coin;
+  }
+  if (priceEl && context.price) {
+    priceEl.textContent =
+      "$" +
+      parseFloat(context.price).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+  }
+  if (signalEl && context.signal) {
+    signalEl.textContent = context.signal;
+    signalEl.style.color =
+      context.signal === "LONG"
+        ? "#00ff88"
+        : context.signal === "SHORT"
+          ? "#ff4466"
+          : "#ffaa00";
+  }
+}
+
+function escapeHtml(text) {
+  var div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Update chat context when data refreshes
+function updateChatContextFromGlobals() {
+  var context = {
+    coin: currentCoin,
+    price: coinPrice,
+    signal: aiData ? aiData.signal : "NEUTRAL",
+  };
+  updateChatContext(context);
+}

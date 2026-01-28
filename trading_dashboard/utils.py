@@ -107,7 +107,15 @@ def parse_ticker_data(ticker: Dict[str, Any]) -> Dict[str, Any]:
     high_24h = float(ticker_data.get("high_24h", ticker_data.get("high24h", 0)))
     low_24h = float(ticker_data.get("low_24h", ticker_data.get("low24h", 0)))
     volume = float(ticker_data.get("base_volume", ticker_data.get("baseVolume", 0)))
-    change_pct = float(ticker_data.get("priceChangePercent", ticker_data.get("change24h", 0)))
+    
+    # priceChangePercent from WEEX is a ratio (e.g., -0.0226 = -2.26%)
+    # Convert to percentage by multiplying by 100
+    change_raw = float(ticker_data.get("priceChangePercent", ticker_data.get("change24h", 0)))
+    # If value is very small (< 1), it's a ratio - convert to percentage
+    if abs(change_raw) < 1:
+        change_pct = change_raw * 100
+    else:
+        change_pct = change_raw
     
     return {
         "price": price,

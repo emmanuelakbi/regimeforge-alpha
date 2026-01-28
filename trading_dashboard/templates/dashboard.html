@@ -36,6 +36,17 @@
           <span class="icon">🧠</span> AI Analysis -
           <span id="current-coin">BTC</span>/USDT
         </h2>
+        <!-- Claude Market Brief -->
+        <div id="market-brief"
+          style="background: rgba(138, 43, 226, 0.1); border: 1px solid rgba(138, 43, 226, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span style="font-size: 14px;">✨</span>
+            <span style="font-size: 12px; color: #a855f7; font-weight: 600;">Claude Market Brief</span>
+            <span id="claude-badge"
+              style="font-size: 10px; background: rgba(138, 43, 226, 0.2); padding: 2px 6px; border-radius: 4px; color: #a855f7; display: none;">LLM</span>
+          </div>
+          <div id="brief-text" style="font-size: 13px; color: #ddd; line-height: 1.5;">Loading market analysis...</div>
+        </div>
         <div id="ai-regime">
           <span class="regime-badge regime-range">Loading...</span>
         </div>
@@ -69,6 +80,14 @@
         <div class="reasoning-list" id="ai-reasoning">
           <div class="reasoning-item">Analyzing market...</div>
         </div>
+        <!-- Claude Signal Explanation -->
+        <button class="btn" onclick="explainSignal()"
+          style="background: rgba(138, 43, 226, 0.3); border: 1px solid #a855f7; margin-bottom: 10px;">
+          ✨ Why this signal?
+        </button>
+        <div id="signal-explanation"
+          style="display: none; background: rgba(138, 43, 226, 0.1); border: 1px solid rgba(138, 43, 226, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 15px; font-size: 13px; color: #ddd; line-height: 1.5;">
+        </div>
         <button class="btn btn-ai" onclick="runAIAnalysis()">
           🔄 Refresh AI Analysis
         </button>
@@ -79,9 +98,19 @@
                 margin-bottom: 5px;
                 display: block;
               ">AI Trade Size (USDT)</label>
-          <input type="number" id="ai-trade-size" value="10" min="5" step="5" style="margin-bottom: 10px" />
+          <input type="number" id="ai-trade-size" value="10" min="5" step="5" style="margin-bottom: 10px"
+            onchange="checkTradeRisk()" />
           <div style="color: #666; font-size: 11px; margin-bottom: 10px" id="ai-size-hint">
             ≈ 0.0001 BTC
+          </div>
+          <!-- Risk Assessment -->
+          <div id="risk-assessment"
+            style="display: none; padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>Risk Level:</span>
+              <span id="risk-level" style="font-weight: 600;">--</span>
+            </div>
+            <div id="risk-details" style="margin-top: 6px; color: #aaa; font-size: 11px;"></div>
           </div>
           <button class="btn btn-buy" onclick="executeAITrade('long')" id="ai-long-btn">
             🤖 AI Long
@@ -380,6 +409,52 @@
         <button class="btn btn-refresh" onclick="loadAllPositions()" style="margin-top: 10px">
           🔄 Refresh All
         </button>
+      </div>
+
+      <!-- AI Chat Advisor -->
+      <div class="card chat-card">
+        <h2>
+          <span class="icon">💬</span> AI Trading Advisor
+          <span id="chat-claude-badge"
+            style="font-size: 10px; background: rgba(138, 43, 226, 0.2); padding: 2px 6px; border-radius: 4px; color: #a855f7; margin-left: 8px;">Claude</span>
+        </h2>
+
+        <!-- Quick Actions -->
+        <div class="chat-quick-actions">
+          <button class="chat-quick-btn" onclick="quickChat('analyze_position')">📊 Analyze Position</button>
+          <button class="chat-quick-btn" onclick="quickChat('market_overview')">🌍 Market Overview</button>
+          <button class="chat-quick-btn" onclick="quickChat('risk_check')">⚠️ Risk Check</button>
+          <button class="chat-quick-btn" onclick="quickChat('trade_idea')">💡 Trade Idea</button>
+          <button class="chat-quick-btn" onclick="quickChat('trending')">🔥 Trending</button>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-message assistant">
+            <div class="chat-avatar">🤖</div>
+            <div class="chat-content">
+              <div class="chat-text">Hi! I'm your AI trading advisor. I can see your positions, market data, and AI
+                signals. Ask me anything about your trades or the market!</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="chat-input-container">
+          <input type="text" id="chat-input" class="chat-input"
+            placeholder="Ask about your position, market conditions, or trade ideas..."
+            onkeypress="if(event.key==='Enter')sendChat()" />
+          <button class="chat-send-btn" onclick="sendChat()">
+            <span>Send</span>
+          </button>
+        </div>
+
+        <!-- Context Indicator -->
+        <div class="chat-context" id="chat-context">
+          <span>📍 Context: <span id="chat-context-coin">BTC</span>/USDT</span>
+          <span>💰 <span id="chat-context-price">$--</span></span>
+          <span>🎯 <span id="chat-context-signal">--</span></span>
+        </div>
       </div>
     </div>
   </div>

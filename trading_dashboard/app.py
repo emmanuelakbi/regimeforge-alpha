@@ -11,6 +11,7 @@ from .services.ai_engine import RegimeForgeAI
 from .services.trading import TradingService
 from .services.take_profit import TakeProfitService
 from .services.automation import AutomationService
+from .services.claude import ClaudeService, ClaudeConfig
 from .routes import api_bp, ai_bp, automation_bp
 
 logging.basicConfig(level=logging.INFO)
@@ -47,12 +48,17 @@ def create_app(config: APIConfig = None) -> Flask:
     tp_service = TakeProfitService()
     automation_service = AutomationService(ai_engine, trading_service, tp_service, get_current_coin)
     
+    # Initialize Claude service (optional - gracefully handles missing credentials)
+    claude_config = ClaudeConfig.from_env()
+    claude_service = ClaudeService(claude_config)
+    
     # Store in app config for route access
     app.config["client"] = client
     app.config["ai_engine"] = ai_engine
     app.config["trading_service"] = trading_service
     app.config["tp_service"] = tp_service
     app.config["automation_service"] = automation_service
+    app.config["claude_service"] = claude_service
     app.config["state"] = state
     
     # Register blueprints
@@ -70,6 +76,7 @@ def create_app(config: APIConfig = None) -> Flask:
     logger.info("=" * 60)
     logger.info("  RegimeForge Alpha - AI Trading Dashboard")
     logger.info(f"  Model: {MODEL_VERSION}")
+    logger.info(f"  Claude LLM: {'Enabled' if claude_service.enabled else 'Disabled'}")
     logger.info("=" * 60)
     
     return app

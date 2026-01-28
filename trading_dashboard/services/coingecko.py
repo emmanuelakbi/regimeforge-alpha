@@ -85,14 +85,14 @@ class CoinGeckoClient:
     """
     
     BASE_URL = "https://api.coingecko.com/api/v3"
-    CACHE_TTL_GLOBAL = 120  # 2 minutes for global data
-    CACHE_TTL_COINS = 60    # 1 minute for coin data
-    CACHE_TTL_TRENDING = 300  # 5 minutes for trending
+    CACHE_TTL_GLOBAL = 300  # 5 minutes for global data
+    CACHE_TTL_COINS = 180   # 3 minutes for coin data
+    CACHE_TTL_TRENDING = 600  # 10 minutes for trending
     
     def __init__(self):
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._last_request_time = 0
-        self._min_request_interval = 2.0  # 2 seconds between requests
+        self._min_request_interval = 3.0  # 3 seconds between requests (more conservative)
     
     def _get_cached(self, key: str, ttl: int) -> Optional[Any]:
         """Get cached data if still valid"""
@@ -102,11 +102,17 @@ class CoinGeckoClient:
                 return cached["data"]
         return None
     
+    def _get_stale_cache(self, key: str) -> Optional[Any]:
+        """Get cached data even if expired (for fallback)"""
+        if key in self._cache:
+            return self._cache[key]["data"]
+        return None
+    
     def _set_cache(self, key: str, data: Any):
         """Store data in cache"""
         self._cache[key] = {"data": data, "timestamp": time.time()}
     
-    async def _request(self, endpoint: str, params: Dict = None) -> Dict[str, Any]:
+    async def _request(self, endpoint: str, params: Dict = None, cache_key: str = None) -> Dict[str, Any]:
         """Make rate-limited request to CoinGecko API"""
         # Rate limiting
         elapsed = time.time() - self._last_request_time
@@ -121,7 +127,12 @@ class CoinGeckoClient:
                 self._last_request_time = time.time()
                 
                 if response.status_code == 429:
-                    logger.warning("CoinGecko rate limit hit, using cached data")
+                    logger.warning("CoinGecko rate limit hit, using stale cache")
+                    # Return stale cache if available
+                    if cache_key:
+                        stale = self._get_stale_cache(cache_key)
+                        if stale:
+                            return {"_from_stale_cache": True, "data": stale}
                     return {}
                 
                 response.raise_for_status()
@@ -147,8 +158,18 @@ class CoinGeckoClient:
         if cached:
             return cached
         
-        data = await self._request("/global")
+        data = await self._request("/global", cache_key=cache_key)
+        
+        # Handle stale cache fallback
+        if data.get("_from_stale_cache"):
+            return data.get("data")
+        
         if not data or "data" not in data:
+            # Try stale cache as last resort
+            stale = self._get_stale_cache(cache_key)
+            if stale:
+                logger.warning("Using stale cache for global data")
+                return stale
             return None
         
         global_data = data["data"]
@@ -196,8 +217,19 @@ class CoinGeckoClient:
             "price_change_percentage": "24h,7d"
         }
         
-        data = await self._request("/coins/markets", params)
-        if not data:
+        data = await self._request("/coins/markets", params, cache_key=cache_key)
+        
+        # Handle stale cache fallback (data is a dict with _from_stale_cache key)
+        if isinstance(data, dict) and data.get("_from_stale_cache"):
+            return data.get("data", {})
+        
+        # /coins/markets returns a list on success
+        if not data or not isinstance(data, list):
+            # Check if it's an error response or empty
+            stale = self._get_stale_cache(cache_key)
+            if stale:
+                logger.warning("Using stale cache for coin data")
+                return stale
             return {}
         
         result = {}
@@ -234,8 +266,17 @@ class CoinGeckoClient:
         if cached:
             return cached
         
-        data = await self._request("/search/trending")
+        data = await self._request("/search/trending", cache_key=cache_key)
+        
+        # Handle stale cache fallback
+        if isinstance(data, dict) and data.get("_from_stale_cache"):
+            return data.get("data", [])
+        
         if not data or "coins" not in data:
+            stale = self._get_stale_cache(cache_key)
+            if stale:
+                logger.warning("Using stale cache for trending data")
+                return stale
             return []
         
         result = []

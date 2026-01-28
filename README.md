@@ -2,7 +2,7 @@
 
 **AI-Powered WEEX Cryptocurrency Trading Dashboard**
 
-An intelligent trading platform for the WEEX exchange featuring real-time market regime detection, automated signal generation, and seamless trade execution with AI log submission for hackathon verification.
+An intelligent trading platform for the WEEX exchange featuring real-time market regime detection, automated signal generation, Claude LLM-powered chat advisor, and seamless trade execution with AI log submission for hackathon verification.
 
 ## 🚀 Key Features
 
@@ -21,11 +21,58 @@ An intelligent trading platform for the WEEX exchange featuring real-time market
 - **Global Market Context**: CoinGecko integration for enhanced signal accuracy
 - **AI Log Submission**: Automatic logging for WEEX hackathon verification
 
+### 🤖 Claude LLM Integration (NEW)
+
+- **AI Chat Advisor**: Context-aware trading assistant powered by Claude via AWS Bedrock
+- **Market Briefs**: Natural language market summaries with AI insights
+- **Signal Explanations**: Detailed reasoning behind AI trading signals
+- **Risk Assessment**: AI-powered trade risk analysis with position sizing advice
+- **Conversation Memory**: Chat maintains context across messages for consistent advice
+
 ### Trade Automation
 
 - **Auto-Trading**: Configurable automated trade execution based on AI signals
 - **Take-Profit Management**: Fixed and trailing take-profit modes
 - **Risk Controls**: Daily loss limits, trade cooldowns, and position limits
+
+---
+
+## 🧠 Claude LLM Features
+
+RegimeForge Alpha integrates Claude (via AWS Bedrock) for intelligent trading assistance.
+
+### Chat Advisor
+
+The AI Chat Advisor provides context-aware trading guidance:
+
+- **Full Market Context**: Knows current price, signal, position, balance, and global sentiment
+- **Conversation Memory**: Remembers previous messages for consistent advice
+- **Quick Actions**: Pre-built prompts for common questions (position analysis, risk check, trade ideas)
+
+### Endpoints
+
+| Endpoint                 | Purpose                             |
+| ------------------------ | ----------------------------------- |
+| `GET /api/brief`         | AI-generated market summary         |
+| `POST /api/explain`      | Signal explanation from Claude      |
+| `POST /api/risk`         | Risk assessment for proposed trades |
+| `POST /api/chat`         | Full chat with conversation history |
+| `POST /api/chat/quick`   | Quick action prompts                |
+| `GET /api/claude/status` | Check if Claude is enabled          |
+
+### Implementation
+
+```text
+trading_dashboard/
+├── services/
+│   └── claude.py         # Claude service (AWS Bedrock integration)
+├── routes/
+│   └── api.py            # Chat and brief endpoints
+├── static/
+│   └── dashboard.js      # Chat UI functions
+└── templates/
+    └── dashboard.html    # Chat interface
+```
 
 ---
 
@@ -35,69 +82,27 @@ RegimeForge Alpha integrates CoinGecko API to enhance AI signal generation with 
 
 ### Endpoints Used
 
-| Endpoint               | Purpose                                            | File Location                             |
-| ---------------------- | -------------------------------------------------- | ----------------------------------------- |
-| `GET /global`          | BTC dominance, total market cap, 24h market change | `trading_dashboard/services/coingecko.py` |
-| `GET /coins/markets`   | 7-day price trends, ATH distance, market cap rank  | `trading_dashboard/services/coingecko.py` |
-| `GET /search/trending` | Trending coins for momentum detection              | `trading_dashboard/services/coingecko.py` |
+| Endpoint               | Purpose                         | Cache TTL |
+| ---------------------- | ------------------------------- | --------- |
+| `GET /global`          | BTC dominance, market sentiment | 5 min     |
+| `GET /coins/markets`   | 7-day trends, ATH distance      | 3 min     |
+| `GET /search/trending` | Trending coins detection        | 10 min    |
 
 ### How CoinGecko Data Enhances the Strategy
 
-**1. Global Market Sentiment** (`/global`)
+**1. Global Market Sentiment** - AI adjusts signal confidence based on market-wide momentum
 
-- Fetches total market cap change (24h) to determine if the overall crypto market is bullish or bearish
-- AI adjusts signal confidence based on market-wide momentum
-- Location: `coingecko.py:get_global_data()` → used in `ai_engine.py:_fetch_global_context()`
+**2. BTC Dominance Analysis** - High dominance signals altcoin underperformance
 
-**2. BTC Dominance Analysis** (`/global`)
+**3. 7-Day Price Trends** - Identifies extended rallies or declines for reversal plays
 
-- High BTC dominance (>55%) signals potential altcoin underperformance
-- Low BTC dominance (<45%) suggests altcoin season - boosts altcoin long signals
-- Location: `coingecko.py:GlobalMarketData.btc_dominance_trend` → `ai_engine.py:analyze()`
+**4. Trending Coin Detection** - Coins trending on CoinGecko receive momentum boost
 
-**3. 7-Day Price Trends** (`/coins/markets`)
+### Rate Limit Handling
 
-- Identifies extended rallies (+10% 7d) that may indicate exhaustion
-- Detects prolonged declines (-10% 7d) for potential reversal plays
-- Location: `coingecko.py:get_coin_data()` → `ai_engine.py:analyze()`
-
-**4. Trending Coin Detection** (`/search/trending`)
-
-- Coins trending on CoinGecko receive a momentum boost in signal scoring
-- Helps identify assets with increasing market attention
-- Location: `coingecko.py:get_trending()` → `ai_engine.py:analyze()`
-
-### Implementation Files
-
-```text
-trading_dashboard/
-├── services/
-│   ├── coingecko.py      # CoinGecko API client with caching
-│   └── ai_engine.py      # AI engine using CoinGecko data (lines 1-50, 103-220)
-├── routes/
-│   └── api.py            # /api/global endpoint (lines 220-240)
-├── static/
-│   └── dashboard.js      # loadGlobalMarket() function (lines 340-395)
-└── templates/
-    └── dashboard.html    # Global Market widget display
-```
-
-### CoinGecko Data Flow
-
-```text
-CoinGeckoClient.get_market_summary()
-    ├── get_global_data()      → BTC dominance, market sentiment
-    ├── get_coin_data()        → 7d trends, ATH distance
-    └── get_trending()         → Trending coins list
-            ↓
-RegimeForgeAI._fetch_global_context()
-            ↓
-RegimeForgeAI.analyze()        → Enhanced signal with global context
-            ↓
-Dashboard displays:
-    - Global Market widget (sentiment, BTC dom, trending)
-    - AI reasoning includes CoinGecko insights
-```
+- Aggressive caching to stay within 30 calls/minute free tier
+- Stale cache fallback when rate limited
+- 3-second minimum interval between requests
 
 ---
 
@@ -112,20 +117,21 @@ trading_dashboard/
 ├── models.py            # Data models
 ├── utils.py             # Helper functions
 ├── routes/
-│   ├── api.py           # Core trading endpoints + /api/global
+│   ├── api.py           # Core trading + Claude endpoints
 │   ├── ai.py            # AI analysis endpoints
 │   └── automation.py    # Automation control
 ├── services/
-│   ├── coingecko.py     # CoinGecko API client (NEW)
+│   ├── claude.py        # Claude LLM service (AWS Bedrock)
+│   ├── coingecko.py     # CoinGecko API client
 │   ├── ai_engine.py     # RegimeForge AI engine
 │   ├── trading.py       # Order execution
 │   ├── take_profit.py   # TP management
 │   └── automation.py    # Auto-trading logic
 ├── templates/
-│   └── dashboard.html   # Web dashboard
+│   └── dashboard.html   # Web dashboard + Chat UI
 └── static/
-    ├── dashboard.css
-    └── dashboard.js
+    ├── dashboard.css    # Styles including chat
+    └── dashboard.js     # Frontend + chat functions
 ```
 
 ## 🚀 Quick Start
@@ -134,6 +140,7 @@ trading_dashboard/
 
 - Python 3.8+
 - WEEX API credentials (with IP whitelisting)
+- AWS credentials (for Claude LLM features - optional)
 
 ### Installation
 
@@ -147,17 +154,23 @@ pip install -r requirements.txt
 
 # Configure credentials
 cp .env.example .env
-# Edit .env with your WEEX API credentials
+# Edit .env with your credentials
 ```
 
 ### Configuration
 
-Create a `.env` file with your WEEX credentials:
+Create a `.env` file:
 
 ```env
+# WEEX API (required)
 WEEX_API_KEY=your_api_key
 WEEX_SECRET_KEY=your_secret_key
 WEEX_PASSPHRASE=your_passphrase
+
+# AWS Bedrock for Claude (optional)
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
 ```
 
 ### Running Locally
@@ -179,39 +192,39 @@ Access the dashboard at `http://localhost:5000`
 ### Market Data
 
 - `GET /api/price` - Current price ticker
-- `GET /api/depth` - Order book depth
-- `GET /api/klines` - Candlestick data
-- `GET /api/global` - CoinGecko global market data
-
-### Account
-
 - `GET /api/balance` - Account balance
 - `GET /api/position` - Current positions
+- `GET /api/global` - CoinGecko global market data
 
 ### Trading
 
-- `POST /api/trade` - Place manual trade
+- `POST /api/open` - Open position
 - `POST /api/close` - Close position
 
-### AI
+### AI Analysis
 
-- `GET /api/ai/analyze` - Get AI signal (includes CoinGecko context)
+- `GET /api/ai/analyze` - Get AI signal
 - `POST /api/ai/trade` - Execute AI-driven trade
 
-### Automation Controls
+### Claude LLM
 
-- `GET /api/automation/settings` - Get automation settings
+- `GET /api/brief` - Market brief
+- `POST /api/explain` - Signal explanation
+- `POST /api/risk` - Risk assessment
+- `POST /api/chat` - Chat with AI advisor
+
+### Automation
+
+- `GET /api/automation/settings` - Get settings
 - `POST /api/automation/settings` - Update settings
-- `POST /api/automation/toggle` - Enable/disable automation
 
 ## 🔧 Tech Stack
 
-- **Backend**: Python 3.x, Flask
+- **Backend**: Python 3.x, Flask, Gunicorn
 - **HTTP Client**: httpx (async)
+- **LLM**: Claude 3 Haiku via AWS Bedrock
 - **External APIs**: WEEX Contract API, CoinGecko API
-- **Frontend**: Vanilla JavaScript, CSS
-- **Templates**: Jinja2
-- **Production**: Gunicorn
+- **Frontend**: Vanilla JavaScript, CSS, Jinja2
 
 ## 🧪 Testing
 
@@ -221,19 +234,19 @@ python test_comprehensive.py
 
 ## ⚠️ Important Notes
 
-- WEEX API requires IP whitelisting - ensure your server IP is whitelisted
+- WEEX API requires IP whitelisting
 - CoinGecko free tier: 30 calls/minute (caching implemented)
+- Claude features require AWS Bedrock access
 - Always test with small amounts first
-- The AI signals are for informational purposes - trade at your own risk
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
 
 ## ⚠️ Disclaimer
 
-RegimeForge Alpha is provided for educational and research purposes. Cryptocurrency trading involves substantial risk of loss. Users are responsible for their own trading decisions and should never trade with funds they cannot afford to lose.
+RegimeForge Alpha is for educational purposes. Cryptocurrency trading involves substantial risk. Trade at your own risk.
 
 ---
 
-**RegimeForge Alpha**: AI-powered trading enhanced with CoinGecko global market intelligence.
+**RegimeForge Alpha**: AI-powered trading with Claude LLM advisor and CoinGecko market intelligence.
