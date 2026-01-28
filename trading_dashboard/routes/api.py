@@ -255,3 +255,28 @@ def reset_tp_tracking():
     _, _, _, tp, state = get_services()
     tp.reset_tracking(state["current_coin"])
     return jsonify({"success": True, "message": f"Take-profit tracking reset for {state['current_coin']}"})
+
+
+@api_bp.route("/global")
+def get_global_market():
+    """
+    Get global market data from CoinGecko.
+    
+    Returns BTC dominance, market sentiment, trending coins.
+    Used for enhanced AI signal generation.
+    """
+    async def fetch():
+        _, _, ai, _, state = get_services()
+        try:
+            summary = await ai.coingecko.get_market_summary(state["current_coin"])
+            return {
+                "success": True,
+                "global": summary["global"],
+                "coin": summary["coin"],
+                "trending": summary["trending"],
+                "current_coin": state["current_coin"]
+            }
+        except Exception as e:
+            logger.error(f"CoinGecko fetch error: {e}")
+            return {"success": False, "error": str(e)}
+    return jsonify(run_async(fetch()))

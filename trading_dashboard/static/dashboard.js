@@ -337,8 +337,67 @@ function refreshData() {
     if (!d.error) updateAIDisplay(d);
   });
   loadAllPositions();
+  loadGlobalMarket();
   document.getElementById("last-update").textContent =
     new Date().toLocaleTimeString();
+}
+
+function loadGlobalMarket() {
+  get("/api/global", function (d) {
+    if (!d.success) {
+      console.log("CoinGecko error:", d.error);
+      return;
+    }
+    // Market sentiment
+    var sentiment = d.global.market_sentiment || "UNKNOWN";
+    var sentimentEl = document.getElementById("global-sentiment");
+    var sentimentColors = {
+      BULLISH: "#00ff88",
+      SLIGHTLY_BULLISH: "#88ff88",
+      NEUTRAL: "#ffaa00",
+      SLIGHTLY_BEARISH: "#ff8888",
+      BEARISH: "#ff4466",
+    };
+    sentimentEl.textContent = sentiment.replace("_", " ");
+    sentimentEl.style.color = sentimentColors[sentiment] || "#888";
+
+    // BTC Dominance
+    var btcDom = d.global.btc_dominance || 0;
+    document.getElementById("btc-dominance").textContent = btcDom.toFixed(1);
+
+    // Global market cap change
+    var globalChange = d.global.market_cap_change_24h || 0;
+    var globalChangeEl = document.getElementById("global-change");
+    globalChangeEl.textContent =
+      (globalChange >= 0 ? "+" : "") + globalChange.toFixed(2) + "%";
+    globalChangeEl.style.color = globalChange >= 0 ? "#00ff88" : "#ff4466";
+
+    // 7d change for current coin
+    var change7d = d.coin.price_change_7d || 0;
+    var change7dEl = document.getElementById("coin-7d-change");
+    change7dEl.textContent =
+      (change7d >= 0 ? "+" : "") + change7d.toFixed(2) + "%";
+    change7dEl.style.color = change7d >= 0 ? "#00ff88" : "#ff4466";
+
+    // Trending coins
+    var trendingCoins = d.trending.coins || [];
+    var trendingEl = document.getElementById("trending-coins");
+    if (trendingCoins.length > 0) {
+      trendingEl.textContent = trendingCoins.slice(0, 5).join(", ");
+    } else {
+      trendingEl.textContent = "No data";
+    }
+
+    // Check if current coin is trending
+    var coinTrendingBadge = document.getElementById("coin-trending-badge");
+    var trendingCoinName = document.getElementById("trending-coin-name");
+    if (d.trending.current_coin_trending) {
+      coinTrendingBadge.style.display = "block";
+      trendingCoinName.textContent = currentCoin;
+    } else {
+      coinTrendingBadge.style.display = "none";
+    }
+  });
 }
 
 var currentPosition = null;

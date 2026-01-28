@@ -120,6 +120,38 @@
         </button>
       </div>
 
+      <!-- Global Market (CoinGecko) -->
+      <div class="card">
+        <h2>
+          <span class="icon">🌍</span> Global Market
+          <span style="font-size: 10px; color: #888; margin-left: 5px">via CoinGecko</span>
+        </h2>
+        <div class="stat">
+          <span class="stat-label">Market Sentiment</span>
+          <span class="stat-value" id="global-sentiment">--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">BTC Dominance</span>
+          <span class="stat-value"><span id="btc-dominance">--</span>%</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Market Cap 24h</span>
+          <span class="stat-value" id="global-change">--</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">7d Change</span>
+          <span class="stat-value" id="coin-7d-change">--</span>
+        </div>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <div style="font-size: 11px; color: #888; margin-bottom: 6px;">🔥 Trending on CoinGecko</div>
+          <div id="trending-coins" style="font-size: 12px; color: #aaa;">Loading...</div>
+        </div>
+        <div id="coin-trending-badge"
+          style="display: none; margin-top: 10px; padding: 8px; background: rgba(255,170,0,0.15); border-radius: 6px; text-align: center;">
+          <span style="color: #ffaa00; font-size: 12px;">🔥 <span id="trending-coin-name">BTC</span> is trending!</span>
+        </div>
+      </div>
+
       <!-- Current Position -->
       <div class="card">
         <h2>

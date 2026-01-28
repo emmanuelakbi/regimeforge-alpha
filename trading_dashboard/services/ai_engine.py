@@ -1,10 +1,10 @@
 """
 RegimeForge Alpha AI Engine
-Market regime detection and signal generation
+Market regime detection and signal generation with CoinGecko integration
 """
 import time
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
 from ..models import MarketData, AISignal
@@ -35,6 +35,7 @@ from ..config import (
     BASE_CONFIDENCE,
     CONFIDENCE_INCREMENT,
 )
+from .coingecko import CoinGeckoClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,10 @@ class RegimeForgeAI:
         self.signal_history: List[str] = []
         self.last_analysis_time = 0
         self._cache = {"signal": None, "timestamp": 0}
+        
+        # CoinGecko integration for global market context
+        self.coingecko = CoinGeckoClient()
+        self._global_market_cache: Dict[str, Any] = {}
     
     def get_symbol(self) -> str:
         """Get current trading symbol"""
@@ -130,6 +135,9 @@ class RegimeForgeAI:
         """
         Run full AI analysis and generate trading signal.
         
+        Combines WEEX market data with CoinGecko global market context
+        for enhanced signal generation.
+        
         Args:
             force_signal: Optional signal to force (LONG/SHORT) for user-requested trades
             
@@ -137,6 +145,10 @@ class RegimeForgeAI:
             AISignal with signal, confidence, regime, and reasoning
         """
         market_data = await self.fetch_market_data()
+        
+        # Fetch CoinGecko global market context
+        coin = self.get_current_coin()
+        global_context = await self._fetch_global_context(coin)
         
         # Calculate indicators
         price_position = market_data.price_position
@@ -157,7 +169,13 @@ class RegimeForgeAI:
             "spread_pct": round(market_data.spread_pct, 4),
             "price_change_24h": round(change_24h, 2),
             "high_24h": market_data.high_24h,
-            "low_24h": market_data.low_24h
+            "low_24h": market_data.low_24h,
+            # CoinGecko indicators
+            "btc_dominance": global_context.get("btc_dominance", 0),
+            "market_sentiment": global_context.get("market_sentiment", "UNKNOWN"),
+            "global_market_change_24h": global_context.get("market_cap_change_24h", 0),
+            "price_change_7d": global_context.get("price_change_7d", 0),
+            "coin_trending": global_context.get("coin_trending", False)
         }
         
         regime = self.detect_regime(market_data, indicators)
@@ -167,7 +185,46 @@ class RegimeForgeAI:
         long_score = 0
         short_score = 0
         
-        # Price position analysis
+        # === CoinGecko Global Market Analysis ===
+        market_sentiment = global_context.get("market_sentiment", "NEUTRAL")
+        btc_dominance = global_context.get("btc_dominance", 50)
+        global_change = global_context.get("market_cap_change_24h", 0)
+        price_7d = global_context.get("price_change_7d", 0)
+        coin_trending = global_context.get("coin_trending", False)
+        
+        # Global sentiment influence
+        if market_sentiment == "BULLISH":
+            long_score += MODERATE_SIGNAL_SCORE
+            reasoning.append(f"🌍 Global market bullish (+{global_change:.1f}% 24h)")
+        elif market_sentiment == "BEARISH":
+            short_score += MODERATE_SIGNAL_SCORE
+            reasoning.append(f"🌍 Global market bearish ({global_change:.1f}% 24h)")
+        elif market_sentiment in ["SLIGHTLY_BULLISH", "SLIGHTLY_BEARISH"]:
+            reasoning.append(f"🌍 Global market {market_sentiment.lower().replace('_', ' ')} ({global_change:+.1f}%)")
+        
+        # BTC dominance analysis (for altcoins)
+        if coin != "BTC" and btc_dominance > 0:
+            if btc_dominance > 55:
+                short_score += 1
+                reasoning.append(f"📊 High BTC dominance ({btc_dominance:.1f}%) - altcoin headwind")
+            elif btc_dominance < 45:
+                long_score += 1
+                reasoning.append(f"📊 Low BTC dominance ({btc_dominance:.1f}%) - altcoin tailwind")
+        
+        # 7-day trend from CoinGecko
+        if price_7d > 10:
+            short_score += 1
+            reasoning.append(f"📈 Strong 7d rally (+{price_7d:.1f}%) - potential exhaustion")
+        elif price_7d < -10:
+            long_score += 1
+            reasoning.append(f"📉 7d decline ({price_7d:.1f}%) - potential reversal")
+        
+        # Trending coin boost
+        if coin_trending:
+            long_score += 1
+            reasoning.append(f"🔥 {coin} is trending on CoinGecko - momentum boost")
+        
+        # === WEEX Price Position Analysis ===
         if price_position < STRONG_SUPPORT_THRESHOLD:
             long_score += STRONG_SIGNAL_SCORE
             reasoning.append(f"Price near 24h low ({price_position:.0f}%) - strong support zone")
@@ -236,6 +293,12 @@ class RegimeForgeAI:
             confidence *= 0.9
             reasoning.append(f"Low volatility ({volatility_pct:.1f}%) - range-bound market")
         
+        # Boost confidence if global sentiment aligns with signal
+        if (signal == "LONG" and market_sentiment in ["BULLISH", "SLIGHTLY_BULLISH"]) or \
+           (signal == "SHORT" and market_sentiment in ["BEARISH", "SLIGHTLY_BEARISH"]):
+            confidence = min(MAX_CONFIDENCE, confidence * 1.05)
+            reasoning.append("✓ Signal aligned with global market sentiment")
+        
         # Handle forced signal
         if force_signal and force_signal in ["LONG", "SHORT"]:
             original_signal = signal
@@ -258,6 +321,45 @@ class RegimeForgeAI:
             indicators=indicators,
             recommended_size="0.001"
         )
+    
+    async def _fetch_global_context(self, coin: str) -> Dict[str, Any]:
+        """
+        Fetch global market context from CoinGecko.
+        
+        Uses CoinGecko API to get:
+        - Global market sentiment (total market cap change)
+        - BTC dominance (affects altcoin performance)
+        - 7-day price trend for the specific coin
+        - Trending status
+        
+        Returns:
+            Dict with global market indicators
+        """
+        try:
+            summary = await self.coingecko.get_market_summary(coin)
+            
+            return {
+                "btc_dominance": summary["global"]["btc_dominance"],
+                "market_sentiment": summary["global"]["market_sentiment"],
+                "market_cap_change_24h": summary["global"]["market_cap_change_24h"],
+                "btc_dominance_trend": summary["global"]["btc_dominance_trend"],
+                "price_change_7d": summary["coin"].get("price_change_7d", 0),
+                "ath_distance": summary["coin"].get("ath_distance_pct", 0),
+                "coin_trending": summary["trending"]["current_coin_trending"],
+                "trending_coins": summary["trending"]["coins"]
+            }
+        except Exception as e:
+            logger.warning(f"CoinGecko fetch failed: {e}, using defaults")
+            return {
+                "btc_dominance": 0,
+                "market_sentiment": "UNKNOWN",
+                "market_cap_change_24h": 0,
+                "btc_dominance_trend": "UNKNOWN",
+                "price_change_7d": 0,
+                "ath_distance": 0,
+                "coin_trending": False,
+                "trending_coins": []
+            }
     
     def _smooth_signal(self, raw_signal: str, price_position: float, reasoning: list) -> str:
         """
