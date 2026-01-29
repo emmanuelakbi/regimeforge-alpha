@@ -154,9 +154,8 @@ class RegimeForgeAI:
         price_position = market_data.price_position
         volatility_pct = market_data.volatility_pct
         
+        # change_24h_pct is already converted to percentage in parse_ticker_data
         change_24h = market_data.change_24h_pct
-        if abs(change_24h) < 1:
-            change_24h = change_24h * 100
         
         rsi_estimate = price_position
         trend_strength = max(-1, min(1, change_24h / 5))

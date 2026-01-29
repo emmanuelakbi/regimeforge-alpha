@@ -36,13 +36,85 @@ function changeCoin(coin) {
       document.getElementById("coin-unit-btn").textContent = coin;
       ai_engine_reset();
       loadTPSettings();
-      refreshData();
+      // Load essential data first (fast WEEX calls)
+      refreshEssentialData();
       showMsg("Now trading " + coin + "/USDT", "success");
+      // Load CoinGecko data in background (slower, rate limited)
+      setTimeout(function () {
+        loadGlobalMarket();
+        loadAISignal();
+      }, 500);
     } else {
       showMsg("Error: " + (r.error || "Failed to switch coin"), "error");
       document.getElementById("coin-select").value = currentCoin;
     }
   });
+}
+
+// Fast refresh - only WEEX data (no CoinGecko)
+function refreshEssentialData() {
+  get("/api/price", function (d) {
+    if (d.error) {
+      console.log("Price error:", d.error);
+      return;
+    }
+    if (d.price) {
+      coinPrice = parseFloat(d.price);
+      document.getElementById("btc-price").textContent =
+        coinPrice.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      if (d.high_24h)
+        document.getElementById("high-24h").textContent = parseFloat(
+          d.high_24h,
+        ).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      if (d.low_24h)
+        document.getElementById("low-24h").textContent = parseFloat(
+          d.low_24h,
+        ).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      if (d.change_24h !== undefined) {
+        var ch = parseFloat(d.change_24h);
+        var chEl = document.getElementById("price-change");
+        chEl.textContent = (ch >= 0 ? "+" : "") + ch.toFixed(2) + "%";
+        chEl.className = "price-change " + (ch >= 0 ? "positive" : "negative");
+      }
+      updateSizeHint();
+      updateAISizeHint();
+    }
+  });
+  get("/api/balance", function (d) {
+    if (d.balance)
+      document.getElementById("balance").textContent = parseFloat(
+        d.balance,
+      ).toFixed(2);
+  });
+  get("/api/position", function (d) {
+    updatePos(d);
+  });
+  get("/api/orders", function (d) {
+    updateOrders(d);
+  });
+  get("/api/history", function (d) {
+    updateHistory(d);
+  });
+  loadAllPositions();
+  document.getElementById("last-update").textContent =
+    new Date().toLocaleTimeString();
+}
+
+// Load AI signal separately (may involve CoinGecko)
+function loadAISignal() {
+  get("/api/ai/analyze", function (d) {
+    if (!d.error) updateAIDisplay(d);
+  });
+  updateChatContextFromGlobals();
 }
 
 function ai_engine_reset() {

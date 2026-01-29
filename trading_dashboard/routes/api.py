@@ -518,17 +518,26 @@ def chat():
             balance = 0
             try:
                 balance_resp = await client.get_assets()
+                logger.info(f"Balance response type: {type(balance_resp)}, content: {balance_resp}")
                 # Handle both list response and dict response
                 assets = []
                 if isinstance(balance_resp, list):
                     assets = balance_resp
                 elif isinstance(balance_resp, dict):
                     assets = balance_resp.get("data", [])
+                    if not assets and isinstance(balance_resp, dict):
+                        # Maybe the response itself is the asset list wrapper
+                        assets = [balance_resp] if balance_resp.get("coinName") or balance_resp.get("currency") else []
+                
+                logger.info(f"Assets to check: {assets}")
                 for asset in assets:
-                    if asset.get("coinName") == "USDT":
-                        balance = float(asset.get("available", 0))
+                    coin_name = asset.get("coinName") or asset.get("currency") or asset.get("coin")
+                    if coin_name == "USDT":
+                        balance = float(asset.get("available") or asset.get("equity") or asset.get("balance") or 0)
+                        logger.info(f"Found USDT balance: {balance}")
                         break
-            except:
+            except Exception as e:
+                logger.error(f"Balance fetch error in chat: {e}")
                 pass
             
             # Get position
@@ -536,15 +545,24 @@ def chat():
             try:
                 symbol = SUPPORTED_COINS.get(coin, "cmt_btcusdt")
                 pos_resp = await client.get_position(symbol)
-                if isinstance(pos_resp, dict):
-                    pos_data = pos_resp.get("data", pos_resp)
-                    if pos_data and float(pos_data.get("total", 0)) > 0:
-                        side = "LONG" if pos_data.get("holdSide") == "long" else "SHORT"
+                pos_list = pos_resp.get("data", pos_resp) if isinstance(pos_resp, dict) else pos_resp
+                
+                if pos_list and isinstance(pos_list, list) and len(pos_list) > 0:
+                    pos = pos_list[0]
+                    size = float(pos.get("size", pos.get("total", 0)))
+                    
+                    if size > 0:
+                        open_value = float(pos.get("open_value", pos.get("openValue", 0)))
+                        side = pos.get("side", pos.get("holdSide", "LONG")).upper()
+                        leverage = int(float(pos.get("leverage", 20)))
+                        entry_price = open_value / size if size > 0 else 0
                         position = {
                             "side": side,
-                            "size": pos_data.get("total"),
-                            "entry_price": float(pos_data.get("averageOpenPrice", 0)),
-                            "pnl": float(pos_data.get("unrealizedPL", 0))
+                            "size": size,
+                            "entry_price": entry_price,
+                            "leverage": leverage,
+                            "margin": (size * entry_price) / leverage if leverage > 0 else 0,
+                            "pnl": float(pos.get("unrealized_pnl", pos.get("unrealizedPL", 0)))
                         }
             except:
                 pass
@@ -614,12 +632,6 @@ def chat_quick():
         if not message:
             return {"success": False, "error": f"Unknown action: {action}"}
         
-        # Reuse the main chat endpoint logic
-        req_copy = {"message": message}
-        with current_app.test_request_context(json=req_copy):
-            # This is a bit hacky but works
-            pass
-        
         # Just call chat with the predefined message
         client, _, ai, _, state = get_services()
         claude = current_app.config.get("claude_service")
@@ -647,12 +659,55 @@ def chat_quick():
             except:
                 pass
             
+            # Get balance
+            balance = 0
+            try:
+                balance_resp = await client.get_assets()
+                assets = []
+                if isinstance(balance_resp, list):
+                    assets = balance_resp
+                elif isinstance(balance_resp, dict):
+                    assets = balance_resp.get("data", [])
+                for asset in assets:
+                    coin_name = asset.get("coinName") or asset.get("currency") or asset.get("coin")
+                    if coin_name == "USDT":
+                        balance = float(asset.get("available") or asset.get("equity") or asset.get("balance") or 0)
+                        break
+            except:
+                pass
+            
+            # Get position
+            position = None
+            try:
+                pos_resp = await client.get_position(symbol)
+                pos_list = pos_resp.get("data", pos_resp) if isinstance(pos_resp, dict) else pos_resp
+                
+                if pos_list and isinstance(pos_list, list) and len(pos_list) > 0:
+                    pos = pos_list[0]
+                    size = float(pos.get("size", pos.get("total", 0)))
+                    
+                    if size > 0:
+                        open_value = float(pos.get("open_value", pos.get("openValue", 0)))
+                        side = pos.get("side", pos.get("holdSide", "LONG")).upper()
+                        leverage = int(float(pos.get("leverage", 20)))
+                        entry_price = open_value / size if size > 0 else 0
+                        position = {
+                            "side": side,
+                            "size": size,
+                            "entry_price": entry_price,
+                            "leverage": leverage,
+                            "margin": (size * entry_price) / leverage if leverage > 0 else 0,
+                            "pnl": float(pos.get("unrealized_pnl", pos.get("unrealizedPL", 0)))
+                        }
+            except:
+                pass
+            
             context = {
                 "coin": coin,
                 "price": price,
                 **signal_data,
-                "balance": 0,
-                "position": None
+                "balance": balance,
+                "position": position
             }
             
             response = claude.chat(message, context)

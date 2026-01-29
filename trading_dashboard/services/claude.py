@@ -295,10 +295,17 @@ Be concise and professional. Include the key reasoning."""
         ctx_parts.append(f"Market Regime: {context.get('regime', 'UNKNOWN')}")
         ctx_parts.append(f"Account Balance: ${context.get('balance', 0):,.2f}")
         
-        # Position info
+        # Position info with leverage context
         pos = context.get('position')
         if pos and pos.get('size'):
-            ctx_parts.append(f"Open Position: {pos.get('side')} {pos.get('size')} @ ${pos.get('entry_price', 0):,.2f} (P&L: ${pos.get('pnl', 0):,.2f})")
+            leverage = pos.get('leverage', 20)
+            margin = pos.get('margin', 0)
+            position_value = pos.get('size', 0) * pos.get('entry_price', 0)
+            ctx_parts.append(f"Open Position: {pos.get('side')} {pos.get('size')} @ ${pos.get('entry_price', 0):,.2f}")
+            ctx_parts.append(f"  - Leverage: {leverage}x")
+            ctx_parts.append(f"  - Position Value: ${position_value:,.2f}")
+            ctx_parts.append(f"  - Margin Used (actual capital at risk): ${margin:,.2f}")
+            ctx_parts.append(f"  - Unrealized P&L: ${pos.get('pnl', 0):,.2f}")
         else:
             ctx_parts.append("Open Position: None")
         
@@ -329,7 +336,9 @@ USER MESSAGE: {message}
 Respond as a helpful trading advisor. Be concise (2-4 sentences unless more detail is needed).
 - If asked about positions, use the context above
 - If asked for trade advice, consider the AI signal and market conditions
-- If asked about risk, factor in balance and position size
+- IMPORTANT for risk assessment: With leveraged trading, the MARGIN is the actual capital at risk, NOT the position value
+  - Example: A $1,000 position at 20x leverage only uses $50 margin (actual risk)
+  - Risk % = margin / balance, NOT position_value / balance
 - Be direct and actionable
 - Use trading terminology appropriately
 - If you don't have enough info, say so
